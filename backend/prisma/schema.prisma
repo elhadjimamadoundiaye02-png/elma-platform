@@ -1,0 +1,132 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  client
+  technicien
+  admin
+}
+
+enum ModeIntervention {
+  domicile
+  atelier
+}
+
+enum StatutTicket {
+  a_attribuer
+  assigne
+  en_cours
+  termine
+}
+
+enum TypeFactureDevis {
+  devis
+  facture
+}
+
+enum StatutPaiement {
+  en_attente
+  paye
+  annule
+}
+
+model User {
+  id               String   @id @default(uuid())
+  nom              String
+  prenom           String
+  email            String   @unique
+  telephone        String   @unique
+  motDePasseHash   String
+  role             Role     @default(client)
+  adresse          String?
+  refreshTokenHash String?
+  createdAt        DateTime @default(now())
+
+  ticketsClient    Ticket[]         @relation("TicketClient")
+  ticketsTech      Ticket[]         @relation("TicketTechnicien")
+  messages         Message[]
+  ticketHistorique TicketHistorique[]
+
+  @@map("users")
+}
+
+model Ticket {
+  id                 String           @id @default(uuid())
+  reference          String           @unique
+  clientId           String
+  client             User             @relation("TicketClient", fields: [clientId], references: [id])
+  technicienId       String?
+  technicien         User?            @relation("TicketTechnicien", fields: [technicienId], references: [id])
+  typeService        String
+  modeIntervention   ModeIntervention
+  statut             StatutTicket     @default(a_attribuer)
+  description        String
+  adresseIntervention String?
+  dateRdv            DateTime?
+  plageHoraire       String?
+  qrCodeUrl          String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  facturesDevis    FactureDevis[]
+  piecesJointes    PieceJointe[]
+  messages         Message[]
+  historique       TicketHistorique[]
+
+  @@map("tickets")
+}
+
+model TicketHistorique {
+  id            String       @id @default(uuid())
+  ticketId      String
+  ticket        Ticket       @relation(fields: [ticketId], references: [id])
+  ancienStatut  StatutTicket?
+  nouveauStatut StatutTicket
+  modifieParId  String
+  modifiePar    User         @relation(fields: [modifieParId], references: [id])
+  createdAt     DateTime     @default(now())
+
+  @@map("ticket_historique")
+}
+
+model FactureDevis {
+  id             String            @id @default(uuid())
+  ticketId       String
+  ticket         Ticket            @relation(fields: [ticketId], references: [id])
+  type           TypeFactureDevis
+  montantTotal   Decimal           @db.Decimal(12, 2)
+  statutPaiement StatutPaiement    @default(en_attente)
+  pdfUrl         String?
+  createdAt      DateTime          @default(now())
+
+  @@map("factures_devis")
+}
+
+model PieceJointe {
+  id           String   @id @default(uuid())
+  ticketId     String
+  ticket       Ticket   @relation(fields: [ticketId], references: [id])
+  fichierUrl   String
+  typeFichier  String
+  createdAt    DateTime @default(now())
+
+  @@map("pieces_jointes")
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  ticketId  String
+  ticket    Ticket   @relation(fields: [ticketId], references: [id])
+  auteurId  String
+  auteur    User     @relation(fields: [auteurId], references: [id])
+  contenu   String
+  createdAt DateTime @default(now())
+
+  @@map("messages")
+}

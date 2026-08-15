@@ -1,0 +1,40 @@
+name: CI Backend (build & vérifications)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-ci.yml'
+  pull_request:
+    paths:
+      - 'backend/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: backend/package.json
+
+      - name: Installer les dépendances
+        run: npm install
+
+      - name: Générer le client Prisma
+        run: npx prisma generate
+
+      - name: Build NestJS
+        run: npm run build
+
+  # Cette CI valide que le build passe à chaque push. Le déploiement effectif
+  # sur Render se déclenche séparément et automatiquement dès que Render
+  # détecte un nouveau commit sur "main" (connexion GitHub native, voir
+  # render.yaml et le README pour la configuration).

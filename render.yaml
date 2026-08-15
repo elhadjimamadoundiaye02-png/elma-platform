@@ -1,0 +1,55 @@
+# Render Blueprint — décrit toute l'infrastructure backend en code.
+# Une fois ce fichier poussé sur GitHub, connectez le repo une seule fois
+# depuis le dashboard Render ("New +" → "Blueprint") : Render lit ce fichier,
+# crée automatiquement les 3 ressources ci-dessous et les redéploie à chaque
+# push sur "main" — aucune configuration manuelle supplémentaire.
+
+databases:
+  - name: elma-postgres
+    plan: free
+    databaseName: elma
+    user: elma
+
+services:
+  - type: redis
+    name: elma-redis
+    plan: free
+    ipAllowList: []
+
+  - type: web
+    name: elma-backend
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install && npx prisma generate && npm run build && npx prisma migrate deploy
+    startCommand: npm run start:prod
+    healthCheckPath: /api/v1/services
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: elma-postgres
+          property: connectionString
+      - key: REDIS_HOST
+        fromService:
+          name: elma-redis
+          type: redis
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          name: elma-redis
+          type: redis
+          property: port
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: JWT_ACCESS_EXPIRES
+        value: 15m
+      - key: JWT_REFRESH_EXPIRES
+        value: 7d
+      - key: FRONTEND_URL
+        sync: false   # à renseigner manuellement : URL GitHub Pages (ex: https://<user>.github.io/elma-platform)
