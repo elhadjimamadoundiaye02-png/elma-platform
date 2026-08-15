@@ -7,6 +7,9 @@ import {
   Radio, Trash2, ChevronLeft, Building2, MonitorSmartphone
 } from "lucide-react";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from "recharts";
+import { AuthProvider, useAuth } from "./AuthContext";
+import { api } from "./api";
+import { connectSocket, getSocket } from "./socket";
 
 /* ---------------------------------- DATA ---------------------------------- */
 
@@ -19,6 +22,30 @@ const SERVICES = [
 ];
 
 const STATUSES = ["À attribuer", "Assigné", "En cours", "Terminé"];
+
+// Le backend utilise des valeurs d'enum techniques (a_attribuer, assigne...) ;
+// l'interface affiche des libellés français. Traduction dans les deux sens.
+const STATUS_LABELS = { a_attribuer: "À attribuer", assigne: "Assigné", en_cours: "En cours", termine: "Terminé" };
+const STATUS_VALUES = { "À attribuer": "a_attribuer", "Assigné": "assigne", "En cours": "en_cours", "Terminé": "termine" };
+
+// Traduit un ticket tel que renvoyé par l'API (champs techniques, enum en
+// minuscules) vers la forme attendue par les composants d'affichage déjà
+// construits pour le prototype (labels français, id lisible = référence).
+function adaptTicket(t, usersById = {}) {
+  return {
+    uuid: t.id,
+    id: t.reference,
+    clientId: t.clientId,
+    technicienId: t.technicienId,
+    service: t.typeService,
+    mode: t.modeIntervention === "domicile" ? "Domicile" : "Atelier",
+    status: STATUS_LABELS[t.statut] || t.statut,
+    tech: t.technicienId ? (usersById[t.technicienId] || "Technicien assigné") : null,
+    date: t.dateRdv ? new Date(t.dateRdv).toLocaleDateString("fr-FR") : new Date(t.createdAt).toLocaleDateString("fr-FR"),
+    desc: t.description,
+    client: t.client ? `${t.client.prenom} ${t.client.nom}` : undefined,
+  };
+}
 
 const TECHS = ["Moussa Diop", "Aïssatou Ba", "Cheikh Fall", "Rama Sy"];
 
@@ -125,6 +152,7 @@ const LiveDot = () => (
 /* ---------------------------------- ROLE SWITCHER ---------------------------------- */
 
 function RoleSwitcher({ view, setView }) {
+  const { user, logout } = useAuth();
   const tabs = [
     { id: "public", label: "Site public", icon: Home },
     { id: "client", label: "Espace Client", icon: MonitorSmartphone },
@@ -133,7 +161,6 @@ function RoleSwitcher({ view, setView }) {
   return (
     <div style={{position:"sticky", top:0, zIndex:50, background:"var(--navy-950)"}} className="elma-root">
       <div style={{maxWidth:1200, margin:"0 auto", padding:"8px 20px", display:"flex", alignItems:"center", gap:16}}>
-        <span className="font-mono" style={{color:"var(--slate-300)", fontSize:11, letterSpacing:1}}>PROTOTYPE —</span>
         <div style={{display:"flex", gap:4}}>
           {tabs.map(t => {
             const Icon = t.icon;
@@ -150,6 +177,18 @@ function RoleSwitcher({ view, setView }) {
               </button>
             );
           })}
+        </div>
+        <div style={{marginLeft:"auto", display:"flex", alignItems:"center", gap:10}}>
+          {user ? (
+            <>
+              <span className="font-mono" style={{color:"var(--slate-300)", fontSize:11}}>{user.email} · {user.role}</span>
+              <button onClick={logout} style={{display:"flex", alignItems:"center", gap:4, background:"none", border:"1px solid var(--navy-700)", borderRadius:8, padding:"5px 10px", fontSize:12, color:"var(--slate-300)", cursor:"pointer"}}>
+                <LogOut size={13} /> Déconnexion
+              </button>
+            </>
+          ) : (
+            <span className="font-mono" style={{color:"var(--slate-500)", fontSize:11}}>Non connecté</span>
+          )}
         </div>
       </div>
     </div>
@@ -244,9 +283,75 @@ function PublicSite({ onBook }) {
   );
 }
 
+/* ---------------------------------- AUTH FORM ---------------------------------- */
+
+// Formulaire de connexion / inscription réutilisé dans la réservation,
+// l'espace client et l'espace admin. Appelle le vrai backend via AuthContext.
+function AuthForm({ onSuccess, compact }) {
+  const { login, register } = useAuth();
+  const [mode, setMode] = useState("login");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [fields, setFields] = useState({ nom: "", prenom: "", email: "", telephone: "", motDePasse: "", adresse: "" });
+
+  const set = (k) => (e) => setFields((f) => ({ ...f, [k]: e.target.value }));
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+    try {
+      if (mode === "login") {
+        await login(fields.email, fields.motDePasse);
+      } else {
+        await register(fields);
+      }
+      onSuccess && onSuccess();
+    } catch (err) {
+      setError(err.message || "Une erreur est survenue.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const inputStyle = { padding: 10, borderRadius: 8, border: "1px solid #E1E9F1", fontSize: 13, width: "100%" };
+
+  return (
+    <div style={{ padding: compact ? 0 : 4 }}>
+      <div style={{ display: "flex", gap: 4, marginBottom: 16, background: "#F1F5F9", borderRadius: 8, padding: 3 }}>
+        {["login", "register"].map((m) => (
+          <button key={m} onClick={() => setMode(m)} type="button" style={{
+            flex: 1, padding: "8px", borderRadius: 6, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600,
+            background: mode === m ? "#fff" : "transparent", color: mode === m ? "var(--navy-950)" : "var(--slate-500)" }}>
+            {m === "login" ? "Se connecter" : "Créer un compte"}
+          </button>
+        ))}
+      </div>
+      <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {mode === "register" && (
+          <>
+            <div style={{ display: "flex", gap: 10 }}>
+              <input required placeholder="Prénom" value={fields.prenom} onChange={set("prenom")} style={inputStyle} />
+              <input required placeholder="Nom" value={fields.nom} onChange={set("nom")} style={inputStyle} />
+            </div>
+            <input required placeholder="Téléphone (+221...)" value={fields.telephone} onChange={set("telephone")} style={inputStyle} />
+          </>
+        )}
+        <input required type="email" placeholder="Email" value={fields.email} onChange={set("email")} style={inputStyle} />
+        <input required type="password" placeholder="Mot de passe (8 caractères min.)" value={fields.motDePasse} onChange={set("motDePasse")} style={inputStyle} />
+        {error && <div style={{ fontSize: 12, color: "#C4531A" }}>{error}</div>}
+        <button disabled={loading} type="submit" className="elma-btn-primary" style={{ border: "none", borderRadius: 8, padding: "11px", fontSize: 13, cursor: loading ? "default" : "pointer", opacity: loading ? 0.6 : 1 }}>
+          {loading ? "Chargement..." : mode === "login" ? "Se connecter" : "Créer mon compte"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
 /* ---------------------------------- BOOKING MODAL ---------------------------------- */
 
 function BookingModal({ onClose, onSubmit }) {
+  const { user } = useAuth();
   const [step, setStep] = useState(1);
   const [service, setService] = useState(null);
   const [mode, setMode] = useState(null);
@@ -255,15 +360,52 @@ function BookingModal({ onClose, onSubmit }) {
   const [slot, setSlot] = useState("");
   const [desc, setDesc] = useState("");
   const [ticket, setTicket] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
 
   const canNext = (step === 1 && service) || (step === 2 && mode && ((mode==="Domicile" && address && date) || (mode==="Atelier" && slot))) || step === 3;
 
-  const finish = () => {
-    const t = { id: `ELMA-${Math.floor(2026000 + Math.random()*900)}`, client: "Vous", service: service.name, mode, status: "À attribuer", tech: null, date: date || "Aujourd'hui", desc };
-    setTicket(t);
-    onSubmit(t);
-    setStep(4);
+  const finish = async () => {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const created = await api.createTicket({
+        typeService: service.name,
+        modeIntervention: mode.toLowerCase(),
+        description: desc,
+        adresseIntervention: mode === "Domicile" ? address : undefined,
+        dateRdv: mode === "Domicile" && date ? date : undefined,
+        plageHoraire: mode === "Atelier" ? slot : undefined,
+      });
+      setTicket(created);
+      onSubmit(created);
+      setStep(4);
+    } catch (err) {
+      setError(err.message || "Impossible de créer la demande. Réessayez.");
+    } finally {
+      setSubmitting(false);
+    }
   };
+
+  // Créer un ticket nécessite un compte (le backend l'exige) : tant que
+  // l'utilisateur n'est pas connecté, on affiche le formulaire de connexion
+  // à la place des étapes de réservation, puis on enchaîne automatiquement.
+  if (!user) {
+    return (
+      <div style={{position:"fixed", inset:0, background:"rgba(10,22,40,.55)", zIndex:100, display:"flex", alignItems:"center", justifyContent:"center", padding:16}} onClick={onClose}>
+        <div className="elma-root elma-card" style={{width:420, maxWidth:"100%", padding:0, overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
+          <div style={{background:"var(--navy-950)", padding:"16px 22px", display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+            <div className="font-display" style={{color:"#fff", fontWeight:600, fontSize:15}}>Connectez-vous pour continuer</div>
+            <button onClick={onClose} style={{background:"none", border:"none", cursor:"pointer"}}><X size={18} color="#B7C4D6" /></button>
+          </div>
+          <div style={{padding:22}}>
+            <p style={{fontSize:12, color:"var(--slate-500)", marginBottom:14}}>Un compte client permet de suivre votre demande en temps réel et d'accéder à vos factures.</p>
+            <AuthForm compact />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{position:"fixed", inset:0, background:"rgba(10,22,40,.55)", zIndex:100, display:"flex", alignItems:"center", justifyContent:"center", padding:16}} onClick={onClose}>
@@ -350,10 +492,10 @@ function BookingModal({ onClose, onSubmit }) {
             <div style={{textAlign:"center", padding:"10px 0"}}>
               <CheckCircle2 size={40} color="#22D3D8" style={{marginBottom:10}} />
               <div className="font-display" style={{fontSize:17, fontWeight:600}}>Demande enregistrée</div>
-              <div className="font-mono" style={{fontSize:13, color:"var(--navy-800)", marginTop:6}}>{ticket.id}</div>
+              <div className="font-mono" style={{fontSize:13, color:"var(--navy-800)", marginTop:6}}>{ticket.reference}</div>
               {mode === "Atelier" && (
                 <div style={{margin:"18px auto 6px", width:120, height:120}}>
-                  <QrPlaceholder seed={ticket.id} />
+                  <QrPlaceholder seed={ticket.reference} />
                 </div>
               )}
               <p style={{fontSize:12, color:"var(--slate-500)", marginTop:10}}>
@@ -363,14 +505,17 @@ function BookingModal({ onClose, onSubmit }) {
           )}
         </div>
 
+        {step === 3 && error && (
+          <div style={{padding:"0 22px 10px", fontSize:12, color:"#C4531A"}}>{error}</div>
+        )}
         {step < 4 && (
           <div style={{display:"flex", justifyContent:"space-between", padding:"14px 22px", borderTop:"1px solid #EEF3F8"}}>
             <button onClick={()=> step>1 ? setStep(step-1) : onClose()} style={{background:"none", border:"none", color:"var(--slate-500)", fontSize:13, cursor:"pointer", display:"flex", alignItems:"center", gap:4}}>
               <ChevronLeft size={14}/> {step>1 ? "Retour" : "Annuler"}
             </button>
-            <button disabled={!canNext} onClick={()=> step<3 ? setStep(step+1) : finish()}
-              className="elma-btn-primary" style={{border:"none", borderRadius:8, padding:"9px 18px", fontSize:13, cursor: canNext?"pointer":"not-allowed", opacity: canNext?1:.5}}>
-              {step<3 ? "Continuer" : "Confirmer la demande"}
+            <button disabled={!canNext || submitting} onClick={()=> step<3 ? setStep(step+1) : finish()}
+              className="elma-btn-primary" style={{border:"none", borderRadius:8, padding:"9px 18px", fontSize:13, cursor: (canNext && !submitting)?"pointer":"not-allowed", opacity: (canNext && !submitting)?1:.5}}>
+              {step<3 ? "Continuer" : submitting ? "Envoi..." : "Confirmer la demande"}
             </button>
           </div>
         )}
@@ -404,10 +549,50 @@ function QrPlaceholder({ seed }) {
 
 const TIMELINE = ["À attribuer", "Assigné", "En cours", "Terminé"];
 
-function ClientSpace({ tickets }) {
+function ClientSpace() {
+  const { user } = useAuth();
   const [tab, setTab] = useState("dashboard");
-  const myTickets = tickets;
-  const [active, setActive] = useState(myTickets[0]);
+  const [myTickets, setMyTickets] = useState([]);
+  const [active, setActive] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const loadTickets = async () => {
+    try {
+      const raw = await api.getTickets();
+      const adapted = raw.map((t) => adaptTicket(t));
+      setMyTickets(adapted);
+      setActive((prev) => adapted.find((t) => t.uuid === prev?.uuid) || adapted[0] || null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!user) return;
+    loadTickets();
+    const socket = connectSocket();
+    socket.emit("session:page_change", { page: "/client/" + tab });
+    const onStatusChange = () => loadTickets();
+    socket.on("ticket:status_changed", onStatusChange);
+    return () => socket.off("ticket:status_changed", onStatusChange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, tab]);
+
+  if (!user) {
+    return (
+      <div className="elma-root" style={{ display: "flex", justifyContent: "center", padding: "60px 20px", minHeight: "70vh" }}>
+        <div className="elma-card" style={{ width: 380, padding: 24 }}>
+          <div className="font-display" style={{ fontSize: 17, fontWeight: 600, marginBottom: 4 }}>Espace Client</div>
+          <p style={{ fontSize: 12, color: "var(--slate-500)", marginBottom: 16 }}>Connectez-vous pour suivre vos demandes.</p>
+          <AuthForm compact />
+        </div>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return <div className="elma-root" style={{ padding: 40, textAlign: "center", color: "var(--slate-500)", fontSize: 13 }}>Chargement de vos tickets...</div>;
+  }
 
   return (
     <div className="elma-root" style={{display:"flex", minHeight:"70vh"}}>
@@ -435,9 +620,14 @@ function ClientSpace({ tickets }) {
         {(tab==="dashboard" || tab==="tickets") && (
           <>
             <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18}}>
-              <h2 className="font-display" style={{fontSize:20}}>Bonjour Ibrahima 👋</h2>
+              <h2 className="font-display" style={{fontSize:20}}>Bonjour {user.email.split("@")[0]} 👋</h2>
               <Bell size={18} color="#6B7A90" />
             </div>
+            {myTickets.length === 0 && (
+              <div className="elma-card" style={{padding:18, marginBottom:18, fontSize:13, color:"var(--slate-500)"}}>
+                Vous n'avez pas encore de demande. Utilisez « Intervention urgente » sur le site public pour en créer une.
+              </div>
+            )}
             <div style={{display:"grid", gridTemplateColumns:"1.1fr 0.9fr", gap:18}}>
               <div>
                 <div style={{fontSize:13, fontWeight:600, marginBottom:10, color:"var(--slate-500)"}}>MES DEMANDES</div>
@@ -509,21 +699,70 @@ function ClientSpace({ tickets }) {
         {tab==="chat" && (
           <>
             <h2 className="font-display" style={{fontSize:20, marginBottom:16}}>Messagerie</h2>
-            <div className="elma-card" style={{padding:18, display:"flex", flexDirection:"column", gap:12, minHeight:260}}>
-              <div style={{alignSelf:"flex-start", background:"#F1F5F9", borderRadius:"10px 10px 10px 2px", padding:"8px 12px", fontSize:13, maxWidth:280}}>
-                Bonjour, votre technicien Moussa Diop est en route pour l'intervention.
-              </div>
-              <div style={{alignSelf:"flex-end", background:"var(--navy-950)", color:"#fff", borderRadius:"10px 10px 2px 10px", padding:"8px 12px", fontSize:13, maxWidth:280}}>
-                Merci, je suis disponible dès 14h.
-              </div>
-              <div style={{marginTop:"auto", display:"flex", gap:8}}>
-                <input placeholder="Écrire un message..." style={{flex:1, padding:10, borderRadius:8, border:"1px solid #E1E9F1", fontSize:13}} />
-                <button className="elma-btn-primary" style={{border:"none", borderRadius:8, padding:"0 16px", cursor:"pointer"}}>Envoyer</button>
-              </div>
-            </div>
+            {!active ? (
+              <div className="elma-card" style={{padding:18, fontSize:13, color:"var(--slate-500)"}}>Sélectionnez un ticket dans « Mes tickets » pour ouvrir sa conversation.</div>
+            ) : (
+              <TicketChat ticketUuid={active.uuid} currentUserId={user.userId} />
+            )}
           </>
         )}
       </main>
+    </div>
+  );
+}
+
+// Conversation liée à un ticket précis : historique via GET, envoi via POST,
+// et réception instantanée des nouveaux messages via l'événement Socket.io
+// `message:new` diffusé dans la room `ticket:{id}` (cf. realtime.gateway.ts).
+function TicketChat({ ticketUuid, currentUserId }) {
+  const [messages, setMessages] = useState([]);
+  const [text, setText] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    api.getMessages(ticketUuid).then((msgs) => { if (active) { setMessages(msgs); setLoading(false); } });
+
+    const socket = connectSocket();
+    socket.emit("ticket:join", ticketUuid);
+    const onNew = (msg) => { if (msg.ticketId === ticketUuid) setMessages((prev) => [...prev, msg]); };
+    socket.on("message:new", onNew);
+    return () => { active = false; socket.off("message:new", onNew); };
+  }, [ticketUuid]);
+
+  const send = async () => {
+    if (!text.trim()) return;
+    const contenu = text;
+    setText("");
+    await api.postMessage(ticketUuid, contenu);
+  };
+
+  return (
+    <div className="elma-card" style={{padding:18, display:"flex", flexDirection:"column", gap:12, minHeight:260}}>
+      {loading ? (
+        <div style={{fontSize:12, color:"var(--slate-500)"}}>Chargement...</div>
+      ) : messages.length === 0 ? (
+        <div style={{fontSize:12, color:"var(--slate-500)"}}>Aucun message pour l'instant — écrivez au technicien ci-dessous.</div>
+      ) : (
+        messages.map((m) => {
+          const mine = m.auteurId === currentUserId;
+          return (
+            <div key={m.id} style={{
+              alignSelf: mine ? "flex-end" : "flex-start",
+              background: mine ? "var(--navy-950)" : "#F1F5F9",
+              color: mine ? "#fff" : "inherit",
+              borderRadius: mine ? "10px 10px 2px 10px" : "10px 10px 10px 2px",
+              padding: "8px 12px", fontSize: 13, maxWidth: 280 }}>
+              {m.contenu}
+            </div>
+          );
+        })
+      )}
+      <div style={{marginTop:"auto", display:"flex", gap:8}}>
+        <input value={text} onChange={(e)=>setText(e.target.value)} onKeyDown={(e)=> e.key==="Enter" && send()} placeholder="Écrire un message..." style={{flex:1, padding:10, borderRadius:8, border:"1px solid #E1E9F1", fontSize:13}} />
+        <button onClick={send} className="elma-btn-primary" style={{border:"none", borderRadius:8, padding:"0 16px", cursor:"pointer"}}>Envoyer</button>
+      </div>
     </div>
   );
 }
@@ -541,17 +780,107 @@ function StatusPill({ status }) {
 
 /* ---------------------------------- ADMIN DASHBOARD ---------------------------------- */
 
-function AdminDashboard({ tickets, setTickets, sessions }) {
-  const [tab, setTab] = useState("overview");
+const REPARTITION_COLORS = ["#22D3D8", "#FF7A45", "#7C9CBF", "#F5A623", "#9B7EDE"];
 
-  const advance = (id, dir) => {
-    setTickets(prev => prev.map(t => {
-      if (t.id !== id) return t;
-      const idx = STATUSES.indexOf(t.status);
-      const next = Math.min(STATUSES.length-1, Math.max(0, idx + dir));
-      return { ...t, status: STATUSES[next], tech: next>0 ? (t.tech||TECHS[0]) : t.tech };
-    }));
+function AdminDashboard() {
+  const { user } = useAuth();
+  const [tab, setTab] = useState("overview");
+  const [tickets, setTickets] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [sessions, setSessions] = useState([]);
+  const [overview, setOverview] = useState(null);
+  const [repartition, setRepartition] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const usersById = useMemo(() => {
+    const map = {};
+    users.forEach((u) => { map[u.id] = `${u.prenom} ${u.nom}`; });
+    return map;
+  }, [users]);
+
+  const technicians = useMemo(() => users.filter((u) => u.role === "technicien"), [users]);
+  const clients = useMemo(() => users.filter((u) => u.role === "client"), [users]);
+
+  const loadTickets = async (usersMap) => {
+    const raw = await api.getTickets();
+    setTickets(raw.map((t) => adaptTicket(t, usersMap || usersById)));
   };
+  const loadUsers = async () => {
+    const list = await api.getUsers();
+    setUsers(list);
+    return list;
+  };
+  const loadSessions = async () => setSessions(await api.getSessions());
+  const loadStats = async () => {
+    const [ov, rep] = await Promise.all([api.getStatsOverview(), api.getStatsRepartition()]);
+    setOverview(ov);
+    setRepartition(rep);
+  };
+
+  useEffect(() => {
+    if (!user || user.role !== "admin") return;
+    (async () => {
+      const list = await loadUsers();
+      const map = {};
+      list.forEach((u) => { map[u.id] = `${u.prenom} ${u.nom}`; });
+      await Promise.all([loadTickets(map), loadSessions(), loadStats()]);
+      setLoading(false);
+    })();
+
+    const socket = connectSocket();
+    socket.emit("session:page_change", { page: "/admin/" + tab });
+
+    const onSessionsUpdate = (list) => setSessions(list);
+    const onTicketChange = () => { loadTickets(); loadStats(); };
+    socket.on("admin:sessions_update", onSessionsUpdate);
+    socket.on("ticket:new", onTicketChange);
+    socket.on("ticket:status_changed", onTicketChange);
+    return () => {
+      socket.off("admin:sessions_update", onSessionsUpdate);
+      socket.off("ticket:new", onTicketChange);
+      socket.off("ticket:status_changed", onTicketChange);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, tab]);
+
+  const advance = async (uuid, dir) => {
+    const t = tickets.find((x) => x.uuid === uuid);
+    if (!t) return;
+    const idx = STATUSES.indexOf(t.status);
+    const next = Math.min(STATUSES.length - 1, Math.max(0, idx + dir));
+    await api.updateTicketStatus(uuid, STATUS_VALUES[STATUSES[next]]);
+    loadTickets();
+    loadStats();
+  };
+
+  const assign = async (uuid, technicienId) => {
+    if (!technicienId) return;
+    await api.assignTechnician(uuid, technicienId);
+    loadTickets();
+  };
+
+  const invalidate = async (socketId) => {
+    await api.invalidateSession(socketId);
+    loadSessions();
+  };
+
+  if (!user || user.role !== "admin") {
+    return (
+      <div className="elma-root" style={{ display: "flex", justifyContent: "center", padding: "60px 20px", minHeight: "70vh" }}>
+        <div className="elma-card" style={{ width: 380, padding: 24 }}>
+          <div className="font-display" style={{ fontSize: 17, fontWeight: 600, marginBottom: 4 }}>Espace Admin</div>
+          <p style={{ fontSize: 12, color: "var(--slate-500)", marginBottom: 16 }}>
+            {user ? "Ce compte n'a pas les droits administrateur." : "Connectez-vous avec un compte administrateur."}
+          </p>
+          {!user && <AuthForm compact />}
+        </div>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return <div className="elma-root" style={{ padding: 40, textAlign: "center", color: "var(--slate-500)", fontSize: 13 }}>Chargement du tableau de bord...</div>;
+  }
 
   return (
     <div className="elma-root" style={{display:"flex", minHeight:"70vh"}}>
@@ -582,31 +911,35 @@ function AdminDashboard({ tickets, setTickets, sessions }) {
           <>
             <h2 className="font-display" style={{fontSize:20, marginBottom:16}}>Vue d'ensemble</h2>
             <div style={{display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14, marginBottom:22}}>
-              <Kpi label="Tickets ouverts" value={tickets.filter(t=>t.status!=="Terminé").length} />
-              <Kpi label="Revenu du mois" value="3,1M FCFA" />
-              <Kpi label="Techniciens actifs" value={TECHS.length} />
-              <Kpi label="En ligne" value={sessions.length} live />
+              <Kpi label="Tickets ouverts" value={overview?.ticketsOuverts ?? 0} />
+              <Kpi label="Revenu (factures payées)" value={`${Number(overview?.revenuTotal ?? 0).toLocaleString("fr-FR")} FCFA`} />
+              <Kpi label="Techniciens actifs" value={overview?.techniciensActifs ?? technicians.length} />
+              <Kpi label="En ligne" value={overview?.enLigne ?? sessions.length} live />
             </div>
             <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:16}}>
               <div className="elma-card" style={{padding:18}}>
                 <div style={{fontSize:13, fontWeight:600, marginBottom:10}}>Répartition par service</div>
-                <ResponsiveContainer width="100%" height={180}>
-                  <PieChart>
-                    <Pie data={STATS_PIE} dataKey="value" nameKey="name" innerRadius={40} outerRadius={70}>
-                      {STATS_PIE.map((e,i)=><Cell key={i} fill={e.color} />)}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
+                {repartition.length === 0 ? (
+                  <div style={{fontSize:12, color:"var(--slate-500)", padding:"40px 0", textAlign:"center"}}>Pas encore de tickets.</div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={180}>
+                    <PieChart>
+                      <Pie data={repartition} dataKey="total" nameKey="service" innerRadius={40} outerRadius={70}>
+                        {repartition.map((e,i)=><Cell key={i} fill={REPARTITION_COLORS[i % REPARTITION_COLORS.length]} />)}
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
               </div>
               <div className="elma-card" style={{padding:18}}>
-                <div style={{fontSize:13, fontWeight:600, marginBottom:10}}>Revenu mensuel (M FCFA)</div>
+                <div style={{fontSize:13, fontWeight:600, marginBottom:10}}>Tickets par statut</div>
                 <ResponsiveContainer width="100%" height={180}>
-                  <BarChart data={REVENUE}>
-                    <XAxis dataKey="mois" fontSize={11} axisLine={false} tickLine={false} />
-                    <YAxis hide />
+                  <BarChart data={STATUSES.map(s => ({ statut: s, total: tickets.filter(t => t.status === s).length }))}>
+                    <XAxis dataKey="statut" fontSize={10} axisLine={false} tickLine={false} />
+                    <YAxis hide allowDecimals={false} />
                     <Tooltip />
-                    <Bar dataKey="v" fill="#22D3D8" radius={[4,4,0,0]} />
+                    <Bar dataKey="total" fill="#22D3D8" radius={[4,4,0,0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -624,14 +957,17 @@ function AdminDashboard({ tickets, setTickets, sessions }) {
               <div style={{display:"grid", gridTemplateColumns:"1.2fr 0.8fr 1fr 1.2fr 0.8fr 0.8fr", padding:"10px 16px", fontSize:11, color:"var(--slate-500)", fontWeight:700, borderBottom:"1px solid #EEF3F8"}}>
                 <span>NOM</span><span>RÔLE</span><span>IP</span><span>PAGE</span><span>DURÉE</span><span></span>
               </div>
+              {sessions.length === 0 && (
+                <div style={{padding:16, fontSize:12, color:"var(--slate-500)"}}>Personne d'autre n'est connecté pour l'instant.</div>
+              )}
               {sessions.map(s => (
-                <div key={s.id} style={{display:"grid", gridTemplateColumns:"1.2fr 0.8fr 1fr 1.2fr 0.8fr 0.8fr", alignItems:"center", padding:"10px 16px", fontSize:12, borderBottom:"1px solid #F5F8FB"}}>
-                  <span style={{fontWeight:600}}>{s.name}</span>
+                <div key={s.socketId} style={{display:"grid", gridTemplateColumns:"1.2fr 0.8fr 1fr 1.2fr 0.8fr 0.8fr", alignItems:"center", padding:"10px 16px", fontSize:12, borderBottom:"1px solid #F5F8FB"}}>
+                  <span style={{fontWeight:600}}>{s.nom}</span>
                   <span><span style={{fontSize:10, padding:"2px 7px", borderRadius:20, background:"#EAF1FF", color:"#2A56A8"}}>{s.role}</span></span>
                   <span className="font-mono" style={{color:"var(--slate-500)"}}>{s.ip}</span>
                   <span className="font-mono" style={{color:"var(--navy-800)"}}>{s.page}</span>
-                  <span className="font-mono">{s.duration} min</span>
-                  <button style={{background:"none", border:"none", color:"#C4531A", cursor:"pointer", fontSize:11, display:"flex", alignItems:"center", gap:3}}>
+                  <span className="font-mono">{Math.max(0, Math.floor((Date.now() - s.connecteDepuis) / 60000))} min</span>
+                  <button onClick={()=>invalidate(s.socketId)} style={{background:"none", border:"none", color:"#C4531A", cursor:"pointer", fontSize:11, display:"flex", alignItems:"center", gap:3}}>
                     <Trash2 size={12}/> Invalider
                   </button>
                 </div>
@@ -649,14 +985,21 @@ function AdminDashboard({ tickets, setTickets, sessions }) {
                   <div style={{fontSize:12, fontWeight:700, color:"var(--slate-500)", marginBottom:8}}>{st.toUpperCase()} · {tickets.filter(t=>t.status===st).length}</div>
                   <div style={{display:"flex", flexDirection:"column", gap:8}}>
                     {tickets.filter(t=>t.status===st).map(t => (
-                      <div key={t.id} className="elma-card" style={{padding:12}}>
+                      <div key={t.uuid} className="elma-card" style={{padding:12}}>
                         <div className="font-mono" style={{fontSize:11, color:"var(--slate-500)"}}>{t.id}</div>
                         <div style={{fontWeight:600, fontSize:12.5, marginTop:4}}>{t.service}</div>
-                        <div style={{fontSize:11, color:"var(--slate-500)", marginTop:2}}>{t.client} · {t.mode}</div>
-                        {t.tech && <div style={{fontSize:11, color:"var(--navy-800)", marginTop:6}}>👤 {t.tech}</div>}
+                        <div style={{fontSize:11, color:"var(--slate-500)", marginTop:2}}>{usersById[t.clientId] || "Client"} · {t.mode}</div>
+                        {t.technicienId ? (
+                          <div style={{fontSize:11, color:"var(--navy-800)", marginTop:6}}>👤 {t.tech}</div>
+                        ) : colIdx===0 && technicians.length > 0 ? (
+                          <select onChange={(e)=>assign(t.uuid, e.target.value)} defaultValue="" style={{marginTop:6, width:"100%", fontSize:11, padding:"4px 6px", borderRadius:6, border:"1px solid #E1E9F1"}}>
+                            <option value="" disabled>Assigner un technicien</option>
+                            {technicians.map(tech => <option key={tech.id} value={tech.id}>{tech.prenom} {tech.nom}</option>)}
+                          </select>
+                        ) : null}
                         <div style={{display:"flex", justifyContent:"space-between", marginTop:10}}>
-                          <button disabled={colIdx===0} onClick={()=>advance(t.id,-1)} style={{background:"none", border:"1px solid #E1E9F1", borderRadius:6, cursor:colIdx===0?"default":"pointer", opacity:colIdx===0?.3:1, padding:"3px 6px"}}><ChevronLeft size={12}/></button>
-                          <button disabled={colIdx===3} onClick={()=>advance(t.id,1)} style={{background:"none", border:"1px solid #E1E9F1", borderRadius:6, cursor:colIdx===3?"default":"pointer", opacity:colIdx===3?.3:1, padding:"3px 6px"}}><ChevronRight size={12}/></button>
+                          <button disabled={colIdx===0} onClick={()=>advance(t.uuid,-1)} style={{background:"none", border:"1px solid #E1E9F1", borderRadius:6, cursor:colIdx===0?"default":"pointer", opacity:colIdx===0?.3:1, padding:"3px 6px"}}><ChevronLeft size={12}/></button>
+                          <button disabled={colIdx===3} onClick={()=>advance(t.uuid,1)} style={{background:"none", border:"1px solid #E1E9F1", borderRadius:6, cursor:colIdx===3?"default":"pointer", opacity:colIdx===3?.3:1, padding:"3px 6px"}}><ChevronRight size={12}/></button>
                         </div>
                       </div>
                     ))}
@@ -674,11 +1017,14 @@ function AdminDashboard({ tickets, setTickets, sessions }) {
               <div style={{display:"grid", gridTemplateColumns:"1.5fr 1fr 1fr", padding:"10px 16px", fontSize:11, color:"var(--slate-500)", fontWeight:700, borderBottom:"1px solid #EEF3F8"}}>
                 <span>NOM</span><span>RÔLE</span><span>TICKETS</span>
               </div>
-              {CLIENT_NAMES.map((n,i) => (
-                <div key={n} style={{display:"grid", gridTemplateColumns:"1.5fr 1fr 1fr", alignItems:"center", padding:"10px 16px", fontSize:12, borderBottom:"1px solid #F5F8FB"}}>
-                  <span style={{display:"flex", alignItems:"center", gap:8}}><Building2 size={13} color="#6B7A90"/>{n}</span>
+              {clients.length === 0 && (
+                <div style={{padding:16, fontSize:12, color:"var(--slate-500)"}}>Aucun client inscrit pour l'instant.</div>
+              )}
+              {clients.map((c) => (
+                <div key={c.id} style={{display:"grid", gridTemplateColumns:"1.5fr 1fr 1fr", alignItems:"center", padding:"10px 16px", fontSize:12, borderBottom:"1px solid #F5F8FB"}}>
+                  <span style={{display:"flex", alignItems:"center", gap:8}}><Building2 size={13} color="#6B7A90"/>{c.prenom} {c.nom}</span>
                   <span style={{fontSize:10, padding:"2px 7px", borderRadius:20, background:"#EAF1FF", color:"#2A56A8", width:"fit-content"}}>Client</span>
-                  <span className="font-mono">{tickets.filter(t=>t.client===n).length}</span>
+                  <span className="font-mono">{tickets.filter(t=>t.clientId===c.id).length}</span>
                 </div>
               ))}
             </div>
@@ -689,25 +1035,29 @@ function AdminDashboard({ tickets, setTickets, sessions }) {
           <>
             <h2 className="font-display" style={{fontSize:20, marginBottom:16}}>Statistiques</h2>
             <div className="elma-card" style={{padding:18, marginBottom:16}}>
-              <div style={{fontSize:13, fontWeight:600, marginBottom:10}}>Revenu mensuel (M FCFA)</div>
+              <div style={{fontSize:13, fontWeight:600, marginBottom:10}}>Tickets par statut</div>
               <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={REVENUE}>
-                  <XAxis dataKey="mois" fontSize={11} axisLine={false} tickLine={false} />
-                  <YAxis fontSize={11} axisLine={false} tickLine={false} />
+                <BarChart data={STATUSES.map(s => ({ statut: s, total: tickets.filter(t => t.status === s).length }))}>
+                  <XAxis dataKey="statut" fontSize={11} axisLine={false} tickLine={false} />
+                  <YAxis fontSize={11} axisLine={false} tickLine={false} allowDecimals={false} />
                   <Tooltip />
-                  <Bar dataKey="v" fill="#0F2340" radius={[4,4,0,0]} />
+                  <Bar dataKey="total" fill="#0F2340" radius={[4,4,0,0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
             <div className="elma-card" style={{padding:18}}>
-              <div style={{fontSize:13, fontWeight:600, marginBottom:10}}>Répartition des demandes</div>
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie data={STATS_PIE} dataKey="value" nameKey="name" outerRadius={80} label={(e)=>`${e.name} ${e.value}%`}>
-                    {STATS_PIE.map((e,i)=><Cell key={i} fill={e.color} />)}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
+              <div style={{fontSize:13, fontWeight:600, marginBottom:10}}>Répartition des demandes par service</div>
+              {repartition.length === 0 ? (
+                <div style={{fontSize:12, color:"var(--slate-500)", padding:"40px 0", textAlign:"center"}}>Pas encore de tickets.</div>
+              ) : (
+                <ResponsiveContainer width="100%" height={200}>
+                  <PieChart>
+                    <Pie data={repartition} dataKey="total" nameKey="service" outerRadius={80} label={(e)=>`${e.service} ${e.total}`}>
+                      {repartition.map((e,i)=><Cell key={i} fill={REPARTITION_COLORS[i % REPARTITION_COLORS.length]} />)}
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
             </div>
           </>
         )}
@@ -727,37 +1077,26 @@ function Kpi({ label, value, live }) {
 
 /* ---------------------------------- APP ROOT ---------------------------------- */
 
-export default function App() {
+function AppShell() {
   const [view, setView] = useState("public");
-  const [tickets, setTickets] = useState(INITIAL_TICKETS);
   const [showBooking, setShowBooking] = useState(false);
-  const [sessions, setSessions] = useState(Array.from({length:4}, (_,i)=>randomSession(i)));
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setSessions(prev => {
-        const copy = prev.map(s => ({...s, duration: s.duration + (Math.random()>0.5?1:0)}));
-        if (Math.random() > 0.6 && copy.length < 7) copy.push(randomSession(Date.now()));
-        if (Math.random() > 0.8 && copy.length > 3) copy.shift();
-        return copy;
-      });
-    }, 3000);
-    return () => clearInterval(interval);
-  }, []);
 
   return (
     <div style={{minHeight:"100vh"}}>
       <GlobalStyle />
       <RoleSwitcher view={view} setView={setView} />
       {view === "public" && <PublicSite onBook={() => setShowBooking(true)} />}
-      {view === "client" && <ClientSpace tickets={tickets} />}
-      {view === "admin" && <AdminDashboard tickets={tickets} setTickets={setTickets} sessions={sessions} />}
-      {showBooking && (
-        <BookingModal
-          onClose={() => setShowBooking(false)}
-          onSubmit={(t) => setTickets(prev => [t, ...prev])}
-        />
-      )}
+      {view === "client" && <ClientSpace />}
+      {view === "admin" && <AdminDashboard />}
+      {showBooking && <BookingModal onClose={() => setShowBooking(false)} onSubmit={() => {}} />}
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppShell />
+    </AuthProvider>
   );
 }
