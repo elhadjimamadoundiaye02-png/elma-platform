@@ -1,9 +1,3 @@
-# Render Blueprint — décrit toute l'infrastructure backend en code.
-# Une fois ce fichier poussé sur GitHub, connectez le repo une seule fois
-# depuis le dashboard Render ("New +" → "Blueprint") : Render lit ce fichier,
-# crée automatiquement les 3 ressources ci-dessous et les redéploie à chaque
-# push sur "main" — aucune configuration manuelle supplémentaire.
-
 databases:
   - name: elma-postgres
     plan: free
@@ -21,7 +15,7 @@ services:
     runtime: node
     plan: free
     rootDir: backend
-    buildCommand: npm install && npx prisma generate && npm run build && npx prisma migrate deploy
+    buildCommand: npm install --include=dev && npx prisma generate && npm run build && npx prisma migrate deploy
     startCommand: npm run start:prod
     healthCheckPath: /api/v1/services
     envVars:
@@ -52,4 +46,4 @@ services:
       - key: JWT_REFRESH_EXPIRES
         value: 7d
       - key: FRONTEND_URL
-        sync: false   # à renseigner manuellement : URL GitHub Pages (ex: https://<user>.github.io/elma-platform)
+        sync: false
