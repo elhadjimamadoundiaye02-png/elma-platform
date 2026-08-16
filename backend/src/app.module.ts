@@ -7,6 +7,7 @@ import { UsersModule } from './users/users.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { TicketsModule } from './tickets/tickets.module';
 import { MessagesModule } from './messages/messages.module';
+import { FacturesModule } from './factures/factures.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { AdminModule } from './admin/admin.module';
 
@@ -20,6 +21,7 @@ import { AdminModule } from './admin/admin.module';
     CatalogModule,
     TicketsModule,
     MessagesModule,
+    FacturesModule,
     RealtimeModule,
     AdminModule,
   ],

@@ -92,6 +92,25 @@ export const api = {
   getMessages: (ticketId) => request(`/tickets/${ticketId}/messages`),
   postMessage: (ticketId, contenu) => request(`/tickets/${ticketId}/messages`, { method: 'POST', body: JSON.stringify({ contenu }) }),
 
+  // --- Factures ---
+  getFactures: () => request('/factures'),
+  createFacture: (data) => request('/factures', { method: 'POST', body: JSON.stringify(data) }),
+  downloadFacturePdf: async (id, filename) => {
+    const res = await fetch(`${API_URL}/factures/${id}/pdf`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) throw new Error('Impossible de télécharger le document.');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename || 'document.pdf';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
+
   // --- Admin ---
   getSessions: () => request('/admin/sessions'),
   invalidateSession: (socketId) => request(`/admin/sessions/${socketId}`, { method: 'DELETE' }),

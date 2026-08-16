@@ -101,6 +101,22 @@ const REVENUE = [
   { mois: "Juin", v: 2.6 }, { mois: "Juil", v: 2.4 }, { mois: "Août", v: 3.1 },
 ];
 
+/* ---------------------------------- RESPONSIVE ---------------------------------- */
+
+// Les mises en page ci-dessous utilisent des styles inline (contrainte de
+// l'environnement de prototypage d'origine) plutôt que des classes CSS —
+// impossible donc de s'appuyer sur de simples media queries. Ce hook bascule
+// certains styles clés (colonnes, direction flex) sous 860px de large.
+function useIsMobile(breakpoint = 860) {
+  const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" && window.innerWidth < breakpoint);
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < breakpoint);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [breakpoint]);
+  return isMobile;
+}
+
 /* ---------------------------------- STYLE ---------------------------------- */
 
 const GlobalStyle = () => (
@@ -122,6 +138,14 @@ const GlobalStyle = () => (
     .elma-btn-amber { background:var(--amber-500); color:#fff; font-weight:600; }
     .elma-btn-amber:hover { background:#ff8f63; }
     .elma-scroll::-webkit-scrollbar{width:6px;} .elma-scroll::-webkit-scrollbar-thumb{background:#CBD8E6;border-radius:4px;}
+    @media (max-width: 860px) {
+      .elma-hero-title { font-size: 32px !important; }
+      .elma-section-pad { padding: 32px 16px !important; }
+      .elma-grid-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    }
+    @media (max-width: 520px) {
+      .elma-hero-title { font-size: 26px !important; }
+    }
   `}</style>
 );
 
@@ -153,37 +177,38 @@ const LiveDot = () => (
 
 function RoleSwitcher({ view, setView }) {
   const { user, logout } = useAuth();
+  const isMobile = useIsMobile(700);
   const tabs = [
-    { id: "public", label: "Site public", icon: Home },
-    { id: "client", label: "Espace Client", icon: MonitorSmartphone },
-    { id: "admin", label: "Espace Admin", icon: UserCog },
+    { id: "public", label: "Site public", short: "Site", icon: Home },
+    { id: "client", label: "Espace Client", short: "Client", icon: MonitorSmartphone },
+    { id: "admin", label: "Espace Admin", short: "Admin", icon: UserCog },
   ];
   return (
     <div style={{position:"sticky", top:0, zIndex:50, background:"var(--navy-950)"}} className="elma-root">
-      <div style={{maxWidth:1200, margin:"0 auto", padding:"8px 20px", display:"flex", alignItems:"center", gap:16}}>
-        <div style={{display:"flex", gap:4}}>
+      <div style={{maxWidth:1200, margin:"0 auto", padding: isMobile ? "8px 12px" : "8px 20px", display:"flex", flexWrap:"wrap", alignItems:"center", gap:isMobile?8:16}}>
+        <div style={{display:"flex", gap:4, flexWrap:"wrap"}}>
           {tabs.map(t => {
             const Icon = t.icon;
             const active = view === t.id;
             return (
               <button key={t.id} onClick={() => setView(t.id)}
                 style={{
-                  display:"flex", alignItems:"center", gap:6, padding:"6px 12px", borderRadius:8,
-                  fontSize:13, fontWeight:600, border:"none", cursor:"pointer",
+                  display:"flex", alignItems:"center", gap:6, padding: isMobile ? "6px 8px" : "6px 12px", borderRadius:8,
+                  fontSize:isMobile?11:13, fontWeight:600, border:"none", cursor:"pointer",
                   background: active ? "var(--teal-400)" : "transparent",
                   color: active ? "var(--navy-950)" : "var(--slate-300)",
                 }}>
-                <Icon size={14} /> {t.label}
+                <Icon size={14} /> {isMobile ? t.short : t.label}
               </button>
             );
           })}
         </div>
-        <div style={{marginLeft:"auto", display:"flex", alignItems:"center", gap:10}}>
+        <div style={{marginLeft: isMobile ? 0 : "auto", display:"flex", alignItems:"center", gap:10, width: isMobile ? "100%" : "auto", justifyContent: isMobile ? "space-between" : "flex-start"}}>
           {user ? (
             <>
-              <span className="font-mono" style={{color:"var(--slate-300)", fontSize:11}}>{user.email} · {user.role}</span>
-              <button onClick={logout} style={{display:"flex", alignItems:"center", gap:4, background:"none", border:"1px solid var(--navy-700)", borderRadius:8, padding:"5px 10px", fontSize:12, color:"var(--slate-300)", cursor:"pointer"}}>
-                <LogOut size={13} /> Déconnexion
+              <span className="font-mono" style={{color:"var(--slate-300)", fontSize:11, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth: isMobile?140:"none"}}>{user.email} · {user.role}</span>
+              <button onClick={logout} style={{display:"flex", alignItems:"center", gap:4, background:"none", border:"1px solid var(--navy-700)", borderRadius:8, padding:"5px 10px", fontSize:12, color:"var(--slate-300)", cursor:"pointer", flexShrink:0}}>
+                <LogOut size={13} /> {!isMobile && "Déconnexion"}
               </button>
             </>
           ) : (
@@ -198,40 +223,41 @@ function RoleSwitcher({ view, setView }) {
 /* ---------------------------------- PUBLIC SITE ---------------------------------- */
 
 function PublicSite({ onBook }) {
+  const isMobile = useIsMobile();
   return (
     <div className="elma-root">
       <header style={{background:"var(--navy-950)", position:"relative", overflow:"hidden"}}>
         <CircuitBg />
-        <div style={{maxWidth:1200, margin:"0 auto", padding:"18px 20px", position:"relative", zIndex:1, display:"flex", justifyContent:"space-between", alignItems:"center"}}>
-          <div className="font-display" style={{color:"#fff", fontWeight:700, fontSize:20}}>ELMA <span style={{color:"var(--teal-400)"}}>&amp; Frères</span></div>
-          <button onClick={onBook} className="elma-btn-amber" style={{border:"none", borderRadius:8, padding:"9px 16px", fontSize:13, display:"flex", alignItems:"center", gap:6, cursor:"pointer"}}>
-            <Zap size={15} /> Intervention urgente
+        <div style={{maxWidth:1200, margin:"0 auto", padding: isMobile ? "14px 16px" : "18px 20px", position:"relative", zIndex:1, display:"flex", flexWrap:"wrap", gap:10, justifyContent:"space-between", alignItems:"center"}}>
+          <div className="font-display" style={{color:"#fff", fontWeight:700, fontSize: isMobile?17:20}}>ELMA <span style={{color:"var(--teal-400)"}}>&amp; Frères</span></div>
+          <button onClick={onBook} className="elma-btn-amber" style={{border:"none", borderRadius:8, padding: isMobile ? "8px 12px" : "9px 16px", fontSize: isMobile?12:13, display:"flex", alignItems:"center", gap:6, cursor:"pointer"}}>
+            <Zap size={15} /> {isMobile ? "Urgence" : "Intervention urgente"}
           </button>
         </div>
-        <div style={{maxWidth:1200, margin:"0 auto", padding:"70px 20px 100px", position:"relative", zIndex:1}}>
-          <div className="font-mono" style={{color:"var(--teal-300)", fontSize:12, letterSpacing:2, marginBottom:14}}>SERVICES NUMÉRIQUES &amp; INFORMATIQUES — DAKAR</div>
-          <h1 className="font-display" style={{color:"#fff", fontSize:44, lineHeight:1.1, maxWidth:640, fontWeight:700}}>
+        <div className="elma-section-pad" style={{maxWidth:1200, margin:"0 auto", padding: isMobile ? "36px 16px 56px" : "70px 20px 100px", position:"relative", zIndex:1}}>
+          <div className="font-mono" style={{color:"var(--teal-300)", fontSize: isMobile?10:12, letterSpacing:2, marginBottom:14}}>SERVICES NUMÉRIQUES &amp; INFORMATIQUES — DAKAR</div>
+          <h1 className="font-display elma-hero-title" style={{color:"#fff", fontSize: isMobile?30:44, lineHeight:1.15, maxWidth:640, fontWeight:700}}>
             Votre partenaire technologique de confiance
           </h1>
-          <p style={{color:"var(--slate-300)", fontSize:16, maxWidth:520, marginTop:16}}>
+          <p style={{color:"var(--slate-300)", fontSize: isMobile?14:16, maxWidth:520, marginTop:16}}>
             Dépannage, réseau, cybersécurité et développement web — une prise en charge suivie en temps réel, à domicile ou en atelier.
           </p>
-          <div style={{display:"flex", gap:12, marginTop:28}}>
-            <button onClick={onBook} className="elma-btn-primary" style={{border:"none", borderRadius:10, padding:"12px 22px", fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", gap:8}}>
+          <div style={{display:"flex", flexDirection: isMobile?"column":"row", gap:12, marginTop:28}}>
+            <button onClick={onBook} className="elma-btn-primary" style={{border:"none", borderRadius:10, padding:"12px 22px", fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8}}>
               Prendre rendez-vous <ArrowRight size={16} />
             </button>
-            <a href="#services" style={{color:"#fff", border:"1px solid var(--navy-700)", borderRadius:10, padding:"12px 22px", fontSize:14, textDecoration:"none"}}>
+            <a href="#services" style={{color:"#fff", border:"1px solid var(--navy-700)", borderRadius:10, padding:"12px 22px", fontSize:14, textDecoration:"none", textAlign:"center"}}>
               Voir les services
             </a>
           </div>
         </div>
       </header>
 
-      <section id="services" style={{maxWidth:1200, margin:"0 auto", padding:"56px 20px"}}>
+      <section id="services" className="elma-section-pad" style={{maxWidth:1200, margin:"0 auto", padding: isMobile ? "36px 16px" : "56px 20px"}}>
         <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-end", marginBottom:28}}>
           <div>
             <div className="font-mono" style={{color:"var(--slate-500)", fontSize:12, letterSpacing:1}}>NOS PÔLES DE COMPÉTENCES</div>
-            <h2 className="font-display" style={{fontSize:28, marginTop:6}}>5 domaines, une seule équipe</h2>
+            <h2 className="font-display" style={{fontSize: isMobile?22:28, marginTop:6}}>5 domaines, une seule équipe</h2>
           </div>
         </div>
         <div style={{display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(220px,1fr))", gap:16}}>
@@ -251,11 +277,11 @@ function PublicSite({ onBook }) {
         </div>
       </section>
 
-      <section style={{background:"var(--navy-900)", padding:"56px 0"}}>
-        <div style={{maxWidth:1200, margin:"0 auto", padding:"0 20px", display:"grid", gridTemplateColumns:"1fr 1fr", gap:40, alignItems:"center"}}>
+      <section className="elma-section-pad" style={{background:"var(--navy-900)", padding: isMobile ? "36px 0" : "56px 0"}}>
+        <div style={{maxWidth:1200, margin:"0 auto", padding: isMobile ? "0 16px" : "0 20px", display:"grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap:isMobile?24:40, alignItems:"center"}}>
           <div>
             <div className="font-mono" style={{color:"var(--teal-300)", fontSize:12, letterSpacing:1}}>ESTIMATION</div>
-            <h2 className="font-display" style={{color:"#fff", fontSize:26, marginTop:6, marginBottom:14}}>Une fourchette de prix en 10 secondes</h2>
+            <h2 className="font-display" style={{color:"#fff", fontSize: isMobile?21:26, marginTop:6, marginBottom:14}}>Une fourchette de prix en 10 secondes</h2>
             <p style={{color:"var(--slate-300)", fontSize:14, lineHeight:1.6}}>
               Sélectionnez un service dans le catalogue ci-dessus : la fourchette tarifaire indicative s'affiche immédiatement.
               Le devis précis est confirmé après diagnostic par notre équipe.
@@ -264,9 +290,9 @@ function PublicSite({ onBook }) {
           <div className="elma-card" style={{padding:24}}>
             <div style={{fontWeight:600, marginBottom:12, fontSize:14}}>Simulateur rapide</div>
             {SERVICES.slice(0,3).map(s => (
-              <div key={s.id} style={{display:"flex", justifyContent:"space-between", padding:"10px 0", borderBottom:"1px solid #EEF3F8", fontSize:13}}>
+              <div key={s.id} style={{display:"flex", justifyContent:"space-between", padding:"10px 0", borderBottom:"1px solid #EEF3F8", fontSize:13, gap:8}}>
                 <span>{s.name}</span>
-                <span className="font-mono" style={{color:"var(--navy-800)"}}>{s.price}</span>
+                <span className="font-mono" style={{color:"var(--navy-800)", flexShrink:0}}>{s.price}</span>
               </div>
             ))}
             <button onClick={onBook} className="elma-btn-primary" style={{width:"100%", marginTop:16, border:"none", borderRadius:8, padding:"11px", fontSize:13, cursor:"pointer"}}>
@@ -276,7 +302,7 @@ function PublicSite({ onBook }) {
         </div>
       </section>
 
-      <footer style={{background:"var(--navy-950)", color:"var(--slate-300)", padding:"28px 20px", textAlign:"center", fontSize:12}}>
+      <footer style={{background:"var(--navy-950)", color:"var(--slate-300)", padding: isMobile ? "22px 16px" : "28px 20px", textAlign:"center", fontSize:12}}>
         ELMA &amp; Frères — +221 78 310 46 84 — elmaamadou02@gmail.com
       </footer>
     </div>
@@ -551,6 +577,7 @@ const TIMELINE = ["À attribuer", "Assigné", "En cours", "Terminé"];
 
 function ClientSpace() {
   const { user } = useAuth();
+  const isMobile = useIsMobile();
   const [tab, setTab] = useState("dashboard");
   const [myTickets, setMyTickets] = useState([]);
   const [active, setActive] = useState(null);
@@ -595,9 +622,11 @@ function ClientSpace() {
   }
 
   return (
-    <div className="elma-root" style={{display:"flex", minHeight:"70vh"}}>
-      <aside style={{width:220, background:"var(--navy-950)", padding:"20px 14px", flexShrink:0}}>
-        <div className="font-display" style={{color:"#fff", fontWeight:700, fontSize:16, marginBottom:22, padding:"0 8px"}}>ELMA <span style={{color:"var(--teal-400)"}}>Client</span></div>
+    <div className="elma-root" style={{display:isMobile?"block":"flex", minHeight:"70vh"}}>
+      <aside style={isMobile
+        ? {background:"var(--navy-950)", padding:"14px 10px", display:"flex", gap:6, overflowX:"auto"}
+        : {width:220, background:"var(--navy-950)", padding:"20px 14px", flexShrink:0}}>
+        {!isMobile && <div className="font-display" style={{color:"#fff", fontWeight:700, fontSize:16, marginBottom:22, padding:"0 8px"}}>ELMA <span style={{color:"var(--teal-400)"}}>Client</span></div>}
         {[
           {id:"dashboard", label:"Tableau de bord", icon:Home},
           {id:"tickets", label:"Mes tickets", icon:TicketIcon},
@@ -606,21 +635,20 @@ function ClientSpace() {
         ].map(n => {
           const Icon = n.icon; const on = tab===n.id;
           return (
-            <button key={n.id} onClick={()=>setTab(n.id)} style={{
-              display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 10px", marginBottom:4,
-              borderRadius:8, border:"none", cursor:"pointer", fontSize:13, textAlign:"left",
-              background: on ? "var(--navy-800)" : "transparent", color: on ? "#fff" : "var(--slate-300)"}}>
+            <button key={n.id} onClick={()=>setTab(n.id)} style={isMobile
+              ? {display:"flex", alignItems:"center", gap:6, padding:"8px 12px", borderRadius:8, border:"none", cursor:"pointer", fontSize:12, whiteSpace:"nowrap", flexShrink:0, background: on ? "var(--navy-800)" : "transparent", color: on ? "#fff" : "var(--slate-300)"}
+              : {display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 10px", marginBottom:4, borderRadius:8, border:"none", cursor:"pointer", fontSize:13, textAlign:"left", background: on ? "var(--navy-800)" : "transparent", color: on ? "#fff" : "var(--slate-300)"}}>
               <Icon size={15} /> {n.label}
             </button>
           );
         })}
       </aside>
 
-      <main style={{flex:1, padding:24, background:"var(--mist-100)"}}>
+      <main style={{flex:1, padding:isMobile?16:24, background:"var(--mist-100)"}}>
         {(tab==="dashboard" || tab==="tickets") && (
           <>
             <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18}}>
-              <h2 className="font-display" style={{fontSize:20}}>Bonjour {user.email.split("@")[0]} 👋</h2>
+              <h2 className="font-display" style={{fontSize:isMobile?17:20}}>Bonjour {user.email.split("@")[0]} 👋</h2>
               <Bell size={18} color="#6B7A90" />
             </div>
             {myTickets.length === 0 && (
@@ -628,7 +656,7 @@ function ClientSpace() {
                 Vous n'avez pas encore de demande. Utilisez « Intervention urgente » sur le site public pour en créer une.
               </div>
             )}
-            <div style={{display:"grid", gridTemplateColumns:"1.1fr 0.9fr", gap:18}}>
+            <div style={{display:"grid", gridTemplateColumns: isMobile ? "1fr" : "1.1fr 0.9fr", gap:18}}>
               <div>
                 <div style={{fontSize:13, fontWeight:600, marginBottom:10, color:"var(--slate-500)"}}>MES DEMANDES</div>
                 <div style={{display:"flex", flexDirection:"column", gap:10}}>
@@ -679,22 +707,7 @@ function ClientSpace() {
           </>
         )}
 
-        {tab==="factures" && (
-          <>
-            <h2 className="font-display" style={{fontSize:20, marginBottom:16}}>Factures &amp; devis</h2>
-            <div className="elma-card" style={{overflow:"hidden"}}>
-              {myTickets.slice(0,5).map((t,i) => (
-                <div key={t.id} style={{display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 16px", borderBottom: i<4?"1px solid #EEF3F8":"none"}}>
-                  <div>
-                    <div style={{fontWeight:600, fontSize:13}}>{t.service}</div>
-                    <div className="font-mono" style={{fontSize:11, color:"var(--slate-500)"}}>{t.id}.pdf</div>
-                  </div>
-                  <button style={{fontSize:12, color:"var(--navy-800)", background:"none", border:"1px solid #E1E9F1", borderRadius:6, padding:"6px 10px", cursor:"pointer"}}>Télécharger</button>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
+        {tab==="factures" && <FacturesTab />}
 
         {tab==="chat" && (
           <>
@@ -778,12 +791,61 @@ function StatusPill({ status }) {
   return <span style={{fontSize:10, fontWeight:700, padding:"3px 8px", borderRadius:20, background:s.bg, color:s.c}}>{status.toUpperCase()}</span>;
 }
 
+// Liste des factures/devis réels de l'utilisateur connecté (client) ou de
+// tout le monde (admin) — le PDF est généré à la volée côté serveur au clic.
+function FacturesTab() {
+  const [factures, setFactures] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [downloadingId, setDownloadingId] = useState(null);
+
+  useEffect(() => {
+    api.getFactures().then((list) => { setFactures(list); setLoading(false); });
+  }, []);
+
+  const download = async (f) => {
+    setDownloadingId(f.id);
+    try {
+      await api.downloadFacturePdf(f.id, `${f.type}-${f.ticket.reference}.pdf`);
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
+  return (
+    <>
+      <h2 className="font-display" style={{fontSize:20, marginBottom:16}}>Factures &amp; devis</h2>
+      {loading ? (
+        <div style={{fontSize:12, color:"var(--slate-500)"}}>Chargement...</div>
+      ) : factures.length === 0 ? (
+        <div className="elma-card" style={{padding:18, fontSize:13, color:"var(--slate-500)"}}>Aucune facture ou devis pour l'instant.</div>
+      ) : (
+        <div className="elma-card" style={{overflow:"hidden"}}>
+          {factures.map((f,i) => (
+            <div key={f.id} style={{display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 16px", borderBottom: i<factures.length-1?"1px solid #EEF3F8":"none", gap:10}}>
+              <div>
+                <div style={{fontWeight:600, fontSize:13}}>{f.ticket.typeService} · {f.type === "devis" ? "Devis" : "Facture"}</div>
+                <div className="font-mono" style={{fontSize:11, color:"var(--slate-500)"}}>{f.ticket.reference} · {Number(f.montantTotal).toLocaleString("fr-FR")} FCFA</div>
+              </div>
+              <button onClick={()=>download(f)} disabled={downloadingId===f.id} style={{fontSize:12, color:"var(--navy-800)", background:"none", border:"1px solid #E1E9F1", borderRadius:6, padding:"6px 10px", cursor:"pointer", flexShrink:0}}>
+                {downloadingId===f.id ? "..." : "Télécharger"}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 /* ---------------------------------- ADMIN DASHBOARD ---------------------------------- */
 
 const REPARTITION_COLORS = ["#22D3D8", "#FF7A45", "#7C9CBF", "#F5A623", "#9B7EDE"];
 
 function AdminDashboard() {
   const { user } = useAuth();
+  const isMobile = useIsMobile();
   const [tab, setTab] = useState("overview");
   const [tickets, setTickets] = useState([]);
   const [users, setUsers] = useState([]);
@@ -859,6 +921,13 @@ function AdminDashboard() {
     loadTickets();
   };
 
+  const generateFacture = async (uuid) => {
+    const montant = window.prompt("Montant de la facture (FCFA) ?");
+    if (!montant || isNaN(Number(montant))) return;
+    await api.createFacture({ ticketId: uuid, type: "facture", montantTotal: Number(montant) });
+    alert("Facture générée — le client peut la télécharger dans son espace.");
+  };
+
   const invalidate = async (socketId) => {
     await api.invalidateSession(socketId);
     loadSessions();
@@ -883,9 +952,11 @@ function AdminDashboard() {
   }
 
   return (
-    <div className="elma-root" style={{display:"flex", minHeight:"70vh"}}>
-      <aside style={{width:220, background:"var(--navy-950)", padding:"20px 14px", flexShrink:0}}>
-        <div className="font-display" style={{color:"#fff", fontWeight:700, fontSize:16, marginBottom:22, padding:"0 8px"}}>ELMA <span style={{color:"var(--teal-400)"}}>Admin</span></div>
+    <div className="elma-root" style={{display:isMobile?"block":"flex", minHeight:"70vh"}}>
+      <aside style={isMobile
+        ? {background:"var(--navy-950)", padding:"14px 10px", display:"flex", gap:6, overflowX:"auto"}
+        : {width:220, background:"var(--navy-950)", padding:"20px 14px", flexShrink:0}}>
+        {!isMobile && <div className="font-display" style={{color:"#fff", fontWeight:700, fontSize:16, marginBottom:22, padding:"0 8px"}}>ELMA <span style={{color:"var(--teal-400)"}}>Admin</span></div>}
         {[
           {id:"overview", label:"Vue d'ensemble", icon:Home},
           {id:"live", label:"Sessions en direct", icon:Radio},
@@ -895,10 +966,9 @@ function AdminDashboard() {
         ].map(n => {
           const Icon = n.icon; const on = tab===n.id;
           return (
-            <button key={n.id} onClick={()=>setTab(n.id)} style={{
-              display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 10px", marginBottom:4,
-              borderRadius:8, border:"none", cursor:"pointer", fontSize:13, textAlign:"left",
-              background: on ? "var(--navy-800)" : "transparent", color: on ? "#fff" : "var(--slate-300)"}}>
+            <button key={n.id} onClick={()=>setTab(n.id)} style={isMobile
+              ? {display:"flex", alignItems:"center", gap:6, padding:"8px 12px", borderRadius:8, border:"none", cursor:"pointer", fontSize:12, whiteSpace:"nowrap", flexShrink:0, background: on ? "var(--navy-800)" : "transparent", color: on ? "#fff" : "var(--slate-300)"}
+              : {display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 10px", marginBottom:4, borderRadius:8, border:"none", cursor:"pointer", fontSize:13, textAlign:"left", background: on ? "var(--navy-800)" : "transparent", color: on ? "#fff" : "var(--slate-300)"}}>
               <Icon size={15} /> {n.label}
               {n.id==="live" && <span style={{marginLeft:"auto"}}><LiveDot /></span>}
             </button>
@@ -906,17 +976,17 @@ function AdminDashboard() {
         })}
       </aside>
 
-      <main style={{flex:1, padding:24, background:"var(--mist-100)", overflow:"auto"}}>
+      <main style={{flex:1, padding:isMobile?14:24, background:"var(--mist-100)", overflow:"auto"}}>
         {tab==="overview" && (
           <>
-            <h2 className="font-display" style={{fontSize:20, marginBottom:16}}>Vue d'ensemble</h2>
-            <div style={{display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14, marginBottom:22}}>
+            <h2 className="font-display" style={{fontSize:isMobile?17:20, marginBottom:16}}>Vue d'ensemble</h2>
+            <div style={{display:"grid", gridTemplateColumns: isMobile ? "repeat(2,1fr)" : "repeat(4,1fr)", gap:14, marginBottom:22}}>
               <Kpi label="Tickets ouverts" value={overview?.ticketsOuverts ?? 0} />
               <Kpi label="Revenu (factures payées)" value={`${Number(overview?.revenuTotal ?? 0).toLocaleString("fr-FR")} FCFA`} />
               <Kpi label="Techniciens actifs" value={overview?.techniciensActifs ?? technicians.length} />
               <Kpi label="En ligne" value={overview?.enLigne ?? sessions.length} live />
             </div>
-            <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:16}}>
+            <div style={{display:"grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap:16}}>
               <div className="elma-card" style={{padding:18}}>
                 <div style={{fontSize:13, fontWeight:600, marginBottom:10}}>Répartition par service</div>
                 {repartition.length === 0 ? (
@@ -953,7 +1023,8 @@ function AdminDashboard() {
               <h2 className="font-display" style={{fontSize:20}}>Sessions en direct</h2>
               <LiveDot /><span className="font-mono" style={{fontSize:12, color:"var(--slate-500)"}}>{sessions.length} connectés</span>
             </div>
-            <div className="elma-card" style={{overflow:"hidden"}}>
+            <div className="elma-card elma-grid-scroll" style={{overflow: isMobile ? "auto" : "hidden"}}>
+              <div style={{minWidth: isMobile ? 620 : "auto"}}>
               <div style={{display:"grid", gridTemplateColumns:"1.2fr 0.8fr 1fr 1.2fr 0.8fr 0.8fr", padding:"10px 16px", fontSize:11, color:"var(--slate-500)", fontWeight:700, borderBottom:"1px solid #EEF3F8"}}>
                 <span>NOM</span><span>RÔLE</span><span>IP</span><span>PAGE</span><span>DURÉE</span><span></span>
               </div>
@@ -972,14 +1043,15 @@ function AdminDashboard() {
                   </button>
                 </div>
               ))}
+              </div>
             </div>
           </>
         )}
 
         {tab==="kanban" && (
           <>
-            <h2 className="font-display" style={{fontSize:20, marginBottom:16}}>Suivi des interventions</h2>
-            <div style={{display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12}}>
+            <h2 className="font-display" style={{fontSize:isMobile?17:20, marginBottom:16}}>Suivi des interventions</h2>
+            <div className="elma-grid-scroll" style={{display:"grid", gridTemplateColumns: isMobile ? "repeat(4,220px)" : "repeat(4,1fr)", gap:12}}>
               {STATUSES.map((st, colIdx) => (
                 <div key={st}>
                   <div style={{fontSize:12, fontWeight:700, color:"var(--slate-500)", marginBottom:8}}>{st.toUpperCase()} · {tickets.filter(t=>t.status===st).length}</div>
@@ -1001,6 +1073,11 @@ function AdminDashboard() {
                           <button disabled={colIdx===0} onClick={()=>advance(t.uuid,-1)} style={{background:"none", border:"1px solid #E1E9F1", borderRadius:6, cursor:colIdx===0?"default":"pointer", opacity:colIdx===0?.3:1, padding:"3px 6px"}}><ChevronLeft size={12}/></button>
                           <button disabled={colIdx===3} onClick={()=>advance(t.uuid,1)} style={{background:"none", border:"1px solid #E1E9F1", borderRadius:6, cursor:colIdx===3?"default":"pointer", opacity:colIdx===3?.3:1, padding:"3px 6px"}}><ChevronRight size={12}/></button>
                         </div>
+                        {colIdx===3 && (
+                          <button onClick={()=>generateFacture(t.uuid)} style={{width:"100%", marginTop:8, fontSize:11, padding:"5px", borderRadius:6, border:"1px solid #E1E9F1", background:"#F7FAFC", cursor:"pointer", color:"var(--navy-800)"}}>
+                            Générer facture
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1012,8 +1089,9 @@ function AdminDashboard() {
 
         {tab==="clients" && (
           <>
-            <h2 className="font-display" style={{fontSize:20, marginBottom:16}}>Fichier clients</h2>
-            <div className="elma-card" style={{overflow:"hidden"}}>
+            <h2 className="font-display" style={{fontSize:isMobile?17:20, marginBottom:16}}>Fichier clients</h2>
+            <div className="elma-card elma-grid-scroll" style={{overflow: isMobile ? "auto" : "hidden"}}>
+              <div style={{minWidth: isMobile ? 420 : "auto"}}>
               <div style={{display:"grid", gridTemplateColumns:"1.5fr 1fr 1fr", padding:"10px 16px", fontSize:11, color:"var(--slate-500)", fontWeight:700, borderBottom:"1px solid #EEF3F8"}}>
                 <span>NOM</span><span>RÔLE</span><span>TICKETS</span>
               </div>
@@ -1027,6 +1105,7 @@ function AdminDashboard() {
                   <span className="font-mono">{tickets.filter(t=>t.clientId===c.id).length}</span>
                 </div>
               ))}
+              </div>
             </div>
           </>
         )}
