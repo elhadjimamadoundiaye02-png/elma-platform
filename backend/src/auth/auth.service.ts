@@ -60,6 +60,16 @@ export class AuthService {
     return this.issueTokens(user.id, user.email, user.role);
   }
 
+  // Route de secours pour promouvoir le tout premier compte admin, en
+  // l'absence d'accès Shell (réservé au plan payant Render). Protégée par
+  // une clé secrète générée aléatoirement par Render (ADMIN_SETUP_KEY),
+  // connue seulement dans le dashboard Render — jamais exposée côté client.
+  async promoteToAdmin(email: string) {
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user) throw new UnauthorizedException('Aucun compte avec cet email.');
+    return this.prisma.user.update({ where: { email }, data: { role: 'admin' } });
+  }
+
   async logout(userId: string) {
     await this.prisma.user.update({
       where: { id: userId },

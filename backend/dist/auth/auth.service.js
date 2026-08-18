@@ -61,6 +61,12 @@ let AuthService = class AuthService {
             throw new common_1.UnauthorizedException('Refresh token invalide.');
         return this.issueTokens(user.id, user.email, user.role);
     }
+    async promoteToAdmin(email) {
+        const user = await this.prisma.user.findUnique({ where: { email } });
+        if (!user)
+            throw new common_1.UnauthorizedException('Aucun compte avec cet email.');
+        return this.prisma.user.update({ where: { email }, data: { role: 'admin' } });
+    }
     async logout(userId) {
         await this.prisma.user.update({
             where: { id: userId },

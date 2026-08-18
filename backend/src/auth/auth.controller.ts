@@ -1,4 +1,4 @@
-import { Body, Controller, Post, UseGuards, Req } from '@nestjs/common';
+import { Body, Controller, Post, Get, Query, ForbiddenException, UseGuards, Req } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
@@ -25,6 +25,17 @@ export class AuthController {
   @Post('otp/request')
   requestOtp(@Body('telephone') telephone: string) {
     return this.authService.requestOtp(telephone);
+  }
+
+  // Visitez cette URL une seule fois (email + la clé ADMIN_SETUP_KEY visible
+  // dans Render → elma-backend → Environment) pour créer votre premier compte
+  // admin, faute d'accès Shell sur le plan gratuit.
+  @Get('promote-admin')
+  promoteAdmin(@Query('email') email: string, @Query('key') key: string) {
+    if (!process.env.ADMIN_SETUP_KEY || key !== process.env.ADMIN_SETUP_KEY) {
+      throw new ForbiddenException('Clé invalide.');
+    }
+    return this.authService.promoteToAdmin(email);
   }
 
   @Post('otp/verify')

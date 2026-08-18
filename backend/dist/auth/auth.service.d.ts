@@ -20,6 +20,7 @@ export declare class AuthService {
         accessToken: string;
         refreshToken: string;
     }>;
+    promoteToAdmin(email: string): Promise<any>;
     logout(userId: string): Promise<void>;
     private issueTokens;
     requestOtp(telephone: string): Promise<{

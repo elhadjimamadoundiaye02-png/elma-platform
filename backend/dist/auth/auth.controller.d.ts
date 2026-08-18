@@ -15,6 +15,7 @@ export declare class AuthController {
     requestOtp(telephone: string): Promise<{
         message: string;
     }>;
+    promoteAdmin(email: string, key: string): Promise<any>;
     verifyOtp(telephone: string, code: string): Promise<{
         message: string;
     }>;

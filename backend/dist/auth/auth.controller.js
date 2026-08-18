@@ -33,6 +33,12 @@ let AuthController = class AuthController {
     requestOtp(telephone) {
         return this.authService.requestOtp(telephone);
     }
+    promoteAdmin(email, key) {
+        if (!process.env.ADMIN_SETUP_KEY || key !== process.env.ADMIN_SETUP_KEY) {
+            throw new common_1.ForbiddenException('Clé invalide.');
+        }
+        return this.authService.promoteToAdmin(email);
+    }
     verifyOtp(telephone, code) {
         return this.authService.verifyOtp(telephone, code);
     }
@@ -66,6 +72,14 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], AuthController.prototype, "requestOtp", null);
+__decorate([
+    (0, common_1.Get)('promote-admin'),
+    __param(0, (0, common_1.Query)('email')),
+    __param(1, (0, common_1.Query)('key')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:returntype", void 0)
+], AuthController.prototype, "promoteAdmin", null);
 __decorate([
     (0, common_1.Post)('otp/verify'),
     __param(0, (0, common_1.Body)('telephone')),
